@@ -1,0 +1,141 @@
+name: Reusable unit-test agent
+
+on:
+  workflow_call:
+    inputs:
+      agent-ref:
+        description: Full SHA of the central agent release (same SHA as the workflow).
+        type: string
+        required: true
+      config-path:
+        description: JSON configuration path, read from the consumer's PR base commit.
+        type: string
+        default: unit-test-agent.json
+    secrets:
+      UNIT_TEST_AGENT_API_KEY:
+        required: false
+      UNIT_TEST_AGENT_SOURCE_TOKEN:
+        description: Optional read-only token for a private central repository.
+        required: false
+
+permissions:
+  contents: read
+
+jobs:
+  run:
+    if: >-
+      github.event_name == 'pull_request' &&
+      github.event.pull_request.head.repo.full_name == github.repository &&
+      !github.event.pull_request.draft &&
+      github.actor != 'github-actions[bot]'
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    permissions:
+      contents: read
+    steps:
+      - name: Require an immutable agent release
+        env:
+          AGENT_REF: ${{ inputs.agent-ref }}
+        run: |
+          [[ "$AGENT_REF" =~ ^[0-9a-f]{40}$ ]] || exit 1
+
+      - name: Checkout trusted central agent
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          repository: ivanBarajasLiverpool/Pruebas-Test-Unit
+          ref: ${{ inputs.agent-ref }}
+          path: trusted-agent
+          persist-credentials: false
+          token: ${{ secrets.UNIT_TEST_AGENT_SOURCE_TOKEN || github.token }}
+
+      - name: Checkout PR without persisted credentials
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          ref: refs/pull/${{ github.event.pull_request.number }}/head
+          path: target
+          fetch-depth: 0
+          persist-credentials: false
+
+      - name: Set up trusted orchestration runtime
+        uses: actions/setup-python@a26af69be951a213d495a4c3e4e4022e16d87065 # v5.6.0
+        with:
+          python-version: '3.12'
+
+      - name: Read configuration from trusted base, not PR
+        env:
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+          CONFIG_PATH: ${{ inputs.config-path }}
+        run: |
+          python -I "$GITHUB_WORKSPACE/trusted-agent/automation/prepare_config.py" \
+            --repository "$GITHUB_WORKSPACE/target" \
+            --base "$BASE_SHA" --head "$HEAD_SHA" \
+            --path "$CONFIG_PATH" --output "$RUNNER_TEMP/unit-agent-config.json"
+
+      - name: Build trusted offline validation image
+        run: |
+          docker build --tag unit-test-agent:local "$GITHUB_WORKSPACE/trusted-agent/automation"
+
+      - name: Generate tests and validate in a credential-free sandbox
+        env:
+          UNIT_TEST_AGENT_API_KEY: ${{ secrets.UNIT_TEST_AGENT_API_KEY }}
+          BASE_SHA: ${{ github.event.pull_request.base.sha }}
+          HEAD_SHA: ${{ github.event.pull_request.head.sha }}
+        run: |
+          python -I "$GITHUB_WORKSPACE/trusted-agent/automation/run_unit_test_agent.py" \
+            --repository "$GITHUB_WORKSPACE/target" \
+            --config "$RUNNER_TEMP/unit-agent-config.json" \
+            --base "$BASE_SHA" --head "$HEAD_SHA" \
+            --output "$RUNNER_TEMP/unit-agent-results"
+
+      - name: Publish bounded logs, report, and candidate patches
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: unit-test-agent-${{ github.event.pull_request.number }}
+          path: ${{ runner.temp }}/unit-agent-results/
+          if-no-files-found: warn
+          retention-days: 7
+
+  publish:
+    needs: run
+    if: always() && needs.run.result != 'skipped'
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      pull-requests: write
+      actions: read
+    steps:
+      - name: Checkout trusted publication code
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4.3.1
+        with:
+          repository: ivanBarajasLiverpool/Pruebas-Test-Unit
+          ref: ${{ inputs.agent-ref }}
+          persist-credentials: false
+          token: ${{ secrets.UNIT_TEST_AGENT_SOURCE_TOKEN || github.token }}
+      - name: Download report
+        id: download
+        continue-on-error: true
+        uses: actions/download-artifact@d3f86a106a0bac45b974a628896c90dbdf5c8093 # v4.3.0
+        with:
+          name: unit-test-agent-${{ github.event.pull_request.number }}
+          path: ${{ runner.temp }}/unit-agent-results
+      - name: Summarize and update the bot comment
+        env:
+          GH_TOKEN: ${{ github.token }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+          REPORT_PATH: ${{ runner.temp }}/unit-agent-results/report.json
+        run: python -I "$GITHUB_WORKSPACE/automation/publish_report.py"
+
+  skipped:
+    if: >-
+      github.event_name == 'pull_request' &&
+      (github.event.pull_request.head.repo.full_name != github.repository ||
+       github.event.pull_request.draft || github.actor == 'github-actions[bot]')
+    runs-on: ubuntu-latest
+    permissions: {}
+    steps:
+      - name: Explain safety policy
+        run: |
+          echo "Unit-test generation skipped: forks, drafts, and workflow-bot updates do not receive model credentials." >> "$GITHUB_STEP_SUMMARY"
