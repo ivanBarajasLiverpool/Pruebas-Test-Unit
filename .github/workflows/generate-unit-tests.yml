@@ -15,9 +15,8 @@ concurrency:
 
 jobs:
   unit-tests:
-    uses: ./.github/workflows/unit-test-agent.yml
+    uses: ivanBarajasLiverpool/Pruebas-Test-Unit/.github/workflows/unit-test-agent.yml@2d08b6535b2c54d35bf1280ccc43758791e8601b
     with:
-      # Local development uses the trusted base; external consumers pin a release SHA.
-      agent-ref: ${{ github.event.pull_request.base.sha }}
+      agent-ref: 2d08b6535b2c54d35bf1280ccc43758791e8601b
     secrets:
       UNIT_TEST_AGENT_API_KEY: ${{ secrets.UNIT_TEST_AGENT_API_KEY }}

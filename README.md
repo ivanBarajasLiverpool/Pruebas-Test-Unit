@@ -17,7 +17,12 @@ No modifica código productivo, pruebas existentes ni la rama del autor.
    el artefacto `unit-test-agent-<número>` y un comentario del bot con el resultado.
 
 El piloto analiza `agent-starter-pack-main/Calculadora` y ejecuta su suite en
-Python 3.11. Se eliminaron los dos workflows duplicados e inactivos del starter
+Python 3.11. El workflow de entrada fija tanto el workflow central como su código
+al mismo SHA inmutable; actualiza ambos juntos al publicar nuevas versiones.
+Protege los workflows de entrada y la configuración mediante revisión obligatoria
+y políticas de Actions de tu organización: un colaborador autorizado a cambiar
+workflows con acceso a secretos sigue perteneciendo al perímetro de confianza.
+Se eliminaron los dos workflows duplicados e inactivos del starter
 pack que invocaban un `generate_tests.py` inexistente.
 
 ## Reutilización en otro repositorio
