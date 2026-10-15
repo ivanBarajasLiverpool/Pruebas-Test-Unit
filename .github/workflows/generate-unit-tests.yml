@@ -1,0 +1,22 @@
+name: Propose unit tests for PR changes
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+  actions: read
+  pull-requests: write
+
+concurrency:
+  group: unit-test-agent-${{ github.repository }}-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  unit-tests:
+    uses: ivanBarajasLiverpool/Pruebas-Test-Unit/.github/workflows/unit-test-agent.yml@2d08b6535b2c54d35bf1280ccc43758791e8601b
+    with:
+      agent-ref: 2d08b6535b2c54d35bf1280ccc43758791e8601b
+    secrets:
+      UNIT_TEST_AGENT_API_KEY: ${{ secrets.UNIT_TEST_AGENT_API_KEY }}

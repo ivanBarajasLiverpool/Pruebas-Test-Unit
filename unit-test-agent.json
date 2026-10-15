@@ -1,0 +1,18 @@
+{
+  "version": 1,
+  "language": "python",
+  "python_version": "3.11",
+  "project_directory": "agent-starter-pack-main",
+  "tests_directory": "Calculadora/tests",
+  "source_paths": ["Calculadora"],
+  "exclude_paths": ["**/__pycache__/**", "**/.venv/**"],
+  "install_command": "true",
+  "test_command": "python -m pytest Calculadora/tests -q",
+  "model": "gpt-4.1-mini",
+  "max_attempts": 2,
+  "max_context_bytes": 60000,
+  "max_file_bytes": 16000,
+  "max_files": 12,
+  "max_output_bytes": 32000,
+  "max_completion_tokens": 4000
+}
